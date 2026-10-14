@@ -326,11 +326,16 @@ else:
                 hole=0.5,
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
+            # Ocultamos el texto exterior para que el donut se vea grande y limpio
             fig_donut.update_traces(
-                textinfo="percent+label",
+                textinfo="none",
                 hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
             )
-            fig_donut.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=280)
+            fig_donut.update_layout(
+                margin=dict(t=10, b=10, l=10, r=10), 
+                height=300,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+            )
             st.plotly_chart(fig_donut, use_container_width=True)
 
     st.divider()

@@ -283,33 +283,30 @@ else:
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        # --- 1. SECCIÓN DE DIVIDENDOS Y RENDIMIENTOS ---
-        st.subheader("💵 Sección de Dividendos y Rendimientos")
-        df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
-        if df_divs.empty:
-            st.info("No hay ingresos por dividendos registrados en los filtros actuales.")
-        else:
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
+        # --- 1. DIVIDENDOS Y VENTAS EN LA MISMA FILA ---
+        col_fila1, col_fila2 = st.columns(2)
+
+        with col_fila1:
+            st.subheader("💵 Dividendos y Rendimientos")
+            df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
+            if df_divs.empty:
+                st.info("No hay dividendos registrados.")
+            else:
                 st.metric(label="Total Dividendos Cobrados", value=f"{dividendos_total:,.2f} €")
-            with col_d2:
-                st.metric(label="Impuestos Retenidos Est. (Tramos IRPF)", value=f"{impuestos_dividendos:,.2f} €")
-            st.dataframe(df_divs[["Fecha", "Activo", "Broker", "Importe_Total"]], use_container_width=True)
+                st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True)
+
+        with col_fila2:
+            st.subheader("💸 Gestión de Ventas")
+            df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
+            if df_ventas.empty:
+                st.info("No hay ventas registradas.")
+            else:
+                st.metric(label="Total Ventas Realizadas", value=f"{ventas_total:,.2f} €")
+                st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True)
 
         st.divider()
 
-        # --- 2. GESTIÓN DE VENTAS Y PLUSVALÍAS REALIZADAS ---
-        st.subheader("💸 Gestión de Ventas y Plusvalías")
-        df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
-        if df_ventas.empty:
-            st.info("No hay operaciones de venta registradas. Cuando vendas activos, aquí verás el cálculo de tus beneficios y plusvalías.")
-        else:
-            st.write("Histórico de ventas y plusvalías calculadas frente al coste de adquisición medio:")
-            st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total", "Comision"]], use_container_width=True)
-
-        st.divider()
-
-        # --- 3. PANEL DE ALERTAS DE REBALANCEO ---
+        # --- 2. PANEL DE ALERTAS DE REBALANCEO ---
         st.subheader("⚖️ Panel de Alertas y Rebalanceo por Categoría")
         st.write("Establece qué porcentaje ideal te gustaría tener en cada categoría de inversión para comprobar desvíos:")
         
@@ -327,7 +324,6 @@ else:
             if suma_pesos != 100:
                 st.warning(f"⚠️ La suma de los porcentajes objetivo actuales es {suma_pesos}%. Lo ideal es que sume exactamente el 100%.")
             
-            # Calcular distribución real actual
             df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
             total_port = df_rebal["Importe_Total"].sum()
             
@@ -345,11 +341,11 @@ else:
                     }),
                     use_container_width=True
                 )
-                st.info("💡 **Consejo de aportación:** Dirige tus próximas aportaciones mensuales al activo o categoría que tenga un desvío negativo (por debajo de su objetivo) para reequilibrar la cartera de forma natural sin vender nada.")
+                st.info("💡 **Consejo de aportación:** Dirige tus próximas aportaciones al activo o categoría con desvío negativo para reequilibrar la cartera.")
 
         st.divider()
 
-        # --- 4. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
+        # --- 3. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
         st.subheader("📊 Distribución de la Cartera")
         
         vista_grafico = st.radio(
@@ -388,7 +384,7 @@ else:
 
         st.divider()
 
-        # --- 5. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
+        # --- 4. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
         st.subheader("📈 Evolución Temporal y Proyección Futura")
 
         df_temporal = df_filtrado.sort_values("Fecha").copy()

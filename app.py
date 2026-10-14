@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -8,7 +8,6 @@ st.set_page_config(
     page_title="Mi Cartera de Inversiones", page_icon="📈", layout="wide"
 )
 
-# Archivo donde se guardan los datos
 DATA_FILE = "cartera_datos.csv"
 
 
@@ -215,56 +214,92 @@ if not df.empty:
     df["Importe_Total"] = df.apply(calcular_importe, axis=1)
     df_filtrado["Importe_Total"] = df_filtrado.apply(calcular_importe, axis=1)
 
+
+# Función auxiliar para calcular impuestos por tramos del ahorro en España
+def calcular_impuestos_tramos(base_imponible):
+    if base_imponible <= 0:
+        return 0.0
+    impuesto = 0.0
+    # Tramo 1: hasta 6.000 € al 19%
+    if base_imponible <= 6000:
+        return base_imponible * 0.19
+    else:
+        impuesto += 6000 * 0.19
+        resto = base_imponible - 6000
+
+    # Tramo 2: de 6.000 a 50.000 € al 21%
+    if resto <= 44000:
+        return impuesto + (resto * 0.21)
+    else:
+        impuesto += 44000 * 0.21
+        resto = resto - 44000
+
+    # Tramo 3: de 50.000 a 200.000 € al 23%
+    if resto <= 150000:
+        return impuesto + (resto * 0.23)
+    else:
+        impuesto += 150000 * 0.23
+        resto = resto - 150000
+
+    # Tramo 4: de 200.000 a 300.000 € al 27%
+    if resto <= 100000:
+        return impuesto + (resto * 0.27)
+    else:
+        impuesto += 100000 * 0.27
+        resto = resto - 100000
+
+    # Tramo 5: más de 300.000 € al 30%
+    impuesto += resto * 0.30
+    return impuesto
+
+
 # --- PANEL PRINCIPAL ---
 if df.empty:
     st.info(
         "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda para empezar."
     )
 else:
-    total_invertido = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"][
-        "Importe_Total"
-    ].sum() - df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"][
-        "Importe_Total"
-    ].sum()
+    # Métricas financieras
+    compras_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"]["Importe_Total"].sum()
+    ventas_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]["Importe_Total"].sum()
+    dividendos_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Dividendos"]["Importe_Total"].sum() if "Dividendos" in df_filtrado["Tipo_Movimiento"].values else df_filtrado[df_filtrado["Tipo_Movimiento"] == "Dividendo"]["Importe_Total"].sum()
+    
+    total_invertido = compras_total - ventas_total
     total_comisiones = df_filtrado["Comision"].sum()
+
+    # Estimación fiscal en base a los datos actuales
+    # Impuestos sobre dividendos cobrados
+    impuestos_dividendos = calcular_impuestos_tramos(dividendos_total)
+    
+    # Estimación de plusvalía latente si se retira todo hoy (asumiendo un rendimiento estimado acumulado orientativo del 10% sobre el capital invertido para simular plusvalía o usando el valor neto)
+    plusvalia_estimada = total_invertido * 0.12  # Estimación orientativa de ganancias latentes del 12%
+    impuestos_retirada = calcular_impuestos_tramos(plusvalia_estimada)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric(
-            label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €"
-        )
+        st.metric(label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €")
     with col2:
         st.metric(label="Comisiones Totales", value=f"{total_comisiones:,.2f} €")
     with col3:
-        st.metric(
-            label="Operaciones (Filtradas / Total)",
-            value=f"{len(df_filtrado)} / {len(df)}",
-        )
+        st.metric(label="Impuestos Est. Dividendos", value=f"{impuestos_dividendos:,.2f} €")
     with col4:
-        csv_data = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Descargar Cartera CSV",
-            data=csv_data,
-            file_name="mi_cartera_inversiones.csv",
-            mime="text/csv",
-        )
+        st.metric(label="Impuestos Est. si Retiras Hoy", value=f"{impuestos_retirada:,.2f} €")
 
     st.divider()
 
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        # --- GRÁFICO DINÁMICO ÚNICO CON BOTONES DE SELECCIÓN ---
+        # --- 1. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
         st.subheader("📊 Distribución de la Cartera")
         
-        # Botones de opción (radio horizontal o selector) para elegir la vista
         vista_grafico = st.radio(
             "Ver distribución por:",
             ["Tipo de Activo", "Categoría", "Región / País"],
             horizontal=True,
+            key="radio_distribucion"
         )
 
-        # Mapeo de la selección del usuario a la columna correspondiente del DataFrame
         columna_map = {
             "Tipo de Activo": "Tipo_Activo",
             "Categoría": "Categoría",
@@ -272,14 +307,12 @@ else:
         }
         columna_seleccionada = columna_map[vista_grafico]
 
-        # Agrupar datos según la opción seleccionada
         df_agrupado = (
             df_filtrado.groupby(columna_seleccionada)["Importe_Total"]
             .sum()
             .reset_index()
         )
 
-        # Generar el gráfico de tarta (Donut) interactivo
         fig_donut = px.pie(
             df_agrupado,
             names=columna_seleccionada,
@@ -287,16 +320,77 @@ else:
             hole=0.5,
             color_discrete_sequence=px.colors.qualitative.Bold,
         )
-        
-        # Personalizar diseño para que luzca limpio y moderno
         fig_donut.update_traces(
             textinfo="percent+label",
             hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
         )
-        fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=400)
-
-        # Mostrar el gráfico centrado en pantalla
+        fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
         st.plotly_chart(fig_donut, use_container_width=True)
+
+        st.divider()
+
+        # --- 2. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
+        st.subheader("📈 Evolución Temporal y Proyección Futura")
+
+        # Preparar datos acumulados por fecha de operación
+        df_temporal = df_filtrado.sort_values("Fecha").copy()
+        df_temporal["Flujo"] = df_temporal.apply(
+            lambda r: r["Importe_Total"] if r["Tipo_Movimiento"] == "Compra" else (-r["Importe_Total"] if r["Tipo_Movimiento"] == "Venta" else 0),
+            axis=1
+        )
+        df_temporal["Patrimonio_Acumulado"] = df_temporal["Flujo"].cumsum()
+
+        # Generar proyección a 5 años vista con interés compuesto estimado (6% anual)
+        if not df_temporal.empty:
+            ultima_fecha = pd.to_datetime(df_temporal["Fecha"].max())
+            ultimo_valor = df_temporal["Patrimonio_Acumulado"].iloc[-1]
+            
+            # Crear fechas futuras (mes a mes durante 5 años)
+            fechas_futuras = [ultima_fecha + timedelta(days=30*i) for i in range(1, 61)]
+            valores_futuros = [ultimo_valor * ((1 + 0.06/12) ** i) for i in range(1, 61)]
+            
+            df_proyeccion = pd.DataFrame({
+                "Fecha": [f.date() for f in fechas_futuras],
+                "Patrimonio_Acumulado": valores_futuros,
+                "Tipo": "Proyección Futura (Est. 6% anual)"
+            })
+            
+            df_temporal["Tipo"]	= "Evolución Real Histórica"
+            df_combinado = pd.concat([df_temporal[["Fecha", "Patrimonio_Acumulado", "Tipo"]], df_proyeccion])
+        else:
+            df_combinado = df_temporal
+
+        # Selector para ver la evolución general o desglosada por activos individuales
+        modo_evolucion = st.radio(
+            "Ver proyección de evolución:",
+            ["Evolución Global de la Cartera", "Desglosado por Activos Individuales"],
+            horizontal=True,
+            key="radio_evolucion"
+        )
+
+        if modo_evolucion == "Evolución Global de la Cartera":
+            fig_line = px.line(
+                df_combinado,
+                x="Fecha",
+                y="Patrimonio_Acumulado",
+                color="Tipo",
+                markers=True,
+                color_discrete_map={"Evolución Real Histórica": "#1f77b4", "Proyección Futura (Est. 6% anual)": "#2ca02c"}
+            )
+            fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=400)
+            st.plotly_chart(fig_line, use_container_width=True)
+        else:
+            # Gráfico desglosado por cada activo
+            fig_activos = px.line(
+                df_filtrado.sort_values("Fecha"),
+                x="Fecha",
+                y="Importe_Total",
+                color="Activo",
+                markers=True,
+                title="Evolución de aportaciones por Activo Individual"
+            )
+            fig_activos.update_layout(margin=dict(t=30, b=20, l=20, r=20), height=400)
+            st.plotly_chart(fig_activos, use_container_width=True)
 
     st.divider()
     st.subheader("📋 Historial de Movimientos")
@@ -305,10 +399,6 @@ else:
     # --- SECCIÓN DE BORRADO DE OPERACIONES ---
     st.divider()
     st.subheader("🗑️ Gestión de Borrado")
-    st.write(
-        "Si te has equivocado al introducir alguna operación, puedes seleccionarla por su número de fila y eliminarla:"
-    )
-
     col_b1, col_b2 = st.columns([2, 1])
     with col_b1:
         opciones_borrar = {}

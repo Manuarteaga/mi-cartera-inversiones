@@ -254,7 +254,6 @@ if df.empty:
         "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda para empezar."
     )
 else:
-    # Métricas financieras desglosadas
     compras_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"]["Importe_Total"].sum()
     ventas_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]["Importe_Total"].sum()
     dividendos_total = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]["Importe_Total"].sum()
@@ -262,54 +261,37 @@ else:
     total_invertido = compras_total - ventas_total
     total_comisiones = df_filtrado["Comision"].sum()
 
-    # Cálculo fiscal
     impuestos_dividendos = calcular_impuestos_tramos(dividendos_total)
     plusvalia_estimada = max(0.0, total_invertido * 0.12)
     impuestos_retirada = calcular_impuestos_tramos(plusvalia_estimada)
 
-    # --- TARJETAS SUPERIORES DE KPIs UBICADAS ARRIBA DEL TODO ---
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €")
-    with col2:
-        st.metric(label="Comisiones Totales", value=f"{total_comisiones:,.2f} €")
-    with col3:
-        st.metric(label="Impuestos Est. Dividendos", value=f"{impuestos_dividendos:,.2f} €")
-    with col4:
-        st.metric(label="Impuestos Est. Retirada", value=f"{impuestos_retirada:,.2f} €")
+    # --- DISPOSICIÓN SUPERIOR: MÉTRICAS A LA IZQUIERDA, GRÁFICO DONUT A LA DERECHA ---
+    col_sup_izq, col_sup_der = st.columns([1.1, 0.9])
 
-    st.divider()
+    with col_sup_izq:
+        st.subheader("💵 Resumen Financiero y Fiscal")
+        m1, m2 = st.columns(2)
+        with m1:
+            st.metric(label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €")
+            st.metric(label="Impuestos Est. Dividendos", value=f"{impuestos_dividendos:,.2f} €")
+        with m2:
+            st.metric(label="Comisiones Totales", value=f"{total_comisiones:,.2f} €")
+            st.metric(label="Impuestos Est. Retirada", value=f"{impuestos_retirada:,.2f} €")
 
-    if df_filtrado.empty:
-        st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
-    else:
-        # --- DISEÑO EN DOS COLUMNAS MAESTRAS DESDE ARRIBA ---
-        # Izquierda: Datos, Tablas, Dividendos/Ventas, Rebalanceo y Borrado
-        # Derecha: Gráficos Analíticos situados al mismo nivel superior
-        col_izq, col_der = st.columns([1.1, 0.9])
-
-        with col_der:
-            st.subheader("📊 Análisis y Gráficos")
-
-            # --- 1. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
+    with col_sup_der:
+        if not df_filtrado.empty:
             vista_grafico = st.selectbox(
                 "Ver distribución por:",
                 ["Tipo de Activo", "Categoría", "Región / País"],
                 key="select_distribucion"
             )
-
             columna_map = {
                 "Tipo de Activo": "Tipo_Activo",
                 "Categoría": "Categoría",
                 "Región / País": "Región_País",
             }
             columna_seleccionada = columna_map[vista_grafico]
-
-            df_agrupado = (
-                df_filtrado.groupby(columna_seleccionada)["Importe_Total"]
-                .sum()
-                .reset_index()
-            )
+            df_agrupado = df_filtrado.groupby(columna_seleccionada)["Importe_Total"].sum().reset_index()
 
             fig_donut = px.pie(
                 df_agrupado,
@@ -322,14 +304,19 @@ else:
                 textinfo="percent+label",
                 hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
             )
-            fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=350)
+            fig_donut.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=280)
             st.plotly_chart(fig_donut, use_container_width=True)
 
-            st.divider()
+    st.divider()
 
-            # --- 2. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
-            st.subheader("📈 Evolución y Proyección")
+    if df_filtrado.empty:
+        st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
+    else:
+        # --- SEGUNDA FILA: EVOLUCIÓN TEMPORAL A LA DERECHA, DATOS Y GESTIÓN A LA IZQUIERDA ---
+        col_inf_izq, col_inf_der = st.columns([1.1, 0.9])
 
+        with col_inf_der:
+            st.subheader("📈 Evolución y Proyección Temporal")
             df_temporal = df_filtrado.sort_values("Fecha").copy()
             df_temporal["Flujo"] = df_temporal.apply(
                 lambda r: r["Importe_Total"] if r["Tipo_Movimiento"] == "Compra" else (-r["Importe_Total"] if r["Tipo_Movimiento"] == "Venta" else 0),
@@ -370,7 +357,7 @@ else:
                     markers=True,
                     color_discrete_map={"Evolución Real Histórica": "#1f77b4", "Proyección Futura (Est. 6% anual)": "#2ca02c"}
                 )
-                fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
+                fig_line.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320)
                 st.plotly_chart(fig_line, use_container_width=True)
             else:
                 fig_activos = px.line(
@@ -380,13 +367,12 @@ else:
                     color="Activo",
                     markers=True,
                 )
-                fig_activos.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
+                fig_activos.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320)
                 st.plotly_chart(fig_activos, use_container_width=True)
 
-        with col_izq:
+        with col_inf_izq:
             st.subheader("📋 Datos y Gestión Operativa")
 
-            # Dividendos y Ventas en dos subcolumnas internas
             sub_c1, sub_c2 = st.columns(2)
             with sub_c1:
                 st.markdown("**💵 Dividendos**")
@@ -394,8 +380,7 @@ else:
                 if df_divs.empty:
                     st.caption("Sin dividendos.")
                 else:
-                    st.metric(label="Cobrados", value=f"{dividendos_total:,.2f} €")
-                    st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
+                    st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=130)
 
             with sub_c2:
                 st.markdown("**💸 Ventas**")
@@ -403,12 +388,10 @@ else:
                 if df_ventas.empty:
                     st.caption("Sin ventas.")
                 else:
-                    st.metric(label="Realizadas", value=f"{ventas_total:,.2f} €")
-                    st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
+                    st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=130)
 
             st.divider()
 
-            # Panel de Alertas de Rebalanceo
             st.subheader("⚖️ Alertas de Rebalanceo")
             categorias_existentes = df_filtrado["Categoría"].unique()
             if len(categorias_existentes) > 0:
@@ -421,7 +404,7 @@ else:
                         suma_pesos += pesos_objetivo[cat]
                 
                 if suma_pesos != 100:
-                    st.warning(f"⚠️ Suma objetivo: {suma_pesos}% (ideal 100%)")
+                    st.warning(f"⚠️ Suma objetivo: {suma_pesos}%")
                 
                 df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
                 total_port = df_rebal["Importe_Total"].sum()
@@ -436,16 +419,14 @@ else:
                             "Desvío_%": "{:+.2f}%"
                         }),
                         use_container_width=True,
-                        height=160
+                        height=140
                     )
 
             st.divider()
 
-            # Historial Completo
             st.subheader("📑 Historial de Movimientos")
-            st.dataframe(df_filtrado, use_container_width=True, height=200)
+            st.dataframe(df_filtrado, use_container_width=True, height=180)
 
-            # Gestión de Borrado
             st.subheader("🗑️ Borrado de Operaciones")
             opciones_borrar = {}
             for idx, row in df.iterrows():
@@ -466,4 +447,3 @@ else:
                     df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
                     df_nuevo.to_csv(DATA_FILE, index=False)
                     st.success("¡Operación eliminada correctamente!")
-                    st.rerun()

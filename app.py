@@ -1,3 +1,11 @@
+¡Excelente idea! Cambiar los múltiples gráficos de tarta por un gráfico dinámico con selector de botones (radio buttons o selectbox) limpia muchísimo la interfaz de la aplicación y deja un panel principal mucho más profesional, ordenado y limpio de un solo vistazo. Además, los gráficos de Plotly ya vienen preparados de serie para que, al pasar el cursor (hover), te muestren exactamente el nombre y el porcentaje o valor de cada porción.
+
+Para hacerlo, vamos a sustituir los tres gráficos independientes por un único selector superior que te permita elegir qué vista quieres consultar: "Tipo de Activo", "Categoría" o "Región / País", renderizando un único gráfico de tarta dinámico que se adapta al instante.
+
+Código actualizado para app.py
+Entra en tu repositorio de GitHub, edita tu archivo app.py, borra todo el contenido anterior y pega esta versión actualizada:
+
+Python
 from datetime import date
 import pandas as pd
 import plotly.express as px
@@ -54,13 +62,11 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
         "Nombre del Activo / Fondo", placeholder="Ej. MSCI World / Telefónica"
     )
 
-    # 1. Selector de Tipo de Activo
     tipo_activo = st.selectbox(
         "Tipo de Activo",
         ["Fondos Indexados", "ETFs", "Acciones", "Fondos Monetarios", "Otro"],
     )
 
-    # 2. CAMPOS DINÁMICOS SEGÚN EL TIPO DE ACTIVO
     subtipo_aportacion = "N/A"
     participaciones = 0.0
     precio_unitario = 0.0
@@ -92,7 +98,6 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             value=10.0,
         )
 
-    # 3. SELECCIÓN DE BRÓKER Y CÁLCULO AUTOMÁTICO DE COMISIÓN
     broker = st.selectbox(
         "Bróker",
         [
@@ -221,7 +226,7 @@ if not df.empty:
 # --- PANEL PRINCIPAL ---
 if df.empty:
     st.info(
-        "👋 ¡Bienvenido! Todavía no hay operaciones registradas. Añade tu primera operación desde el menú desplegable de la izquierda para generar el archivo de datos automáticamente."
+        "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda para empezar."
     )
 else:
     total_invertido = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"][
@@ -257,56 +262,51 @@ else:
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        col_g1, col_g2, col_g3 = st.columns(3)
+        # --- GRÁFICO DINÁMICO ÚNICO CON BOTONES DE SELECCIÓN ---
+        st.subheader("📊 Distribución de la Cartera")
+        
+        # Botones de opción (radio horizontal o selector) para elegir la vista
+        vista_grafico = st.radio(
+            "Ver distribución por:",
+            ["Tipo de Activo", "Categoría", "Región / País"],
+            horizontal=True,
+        )
 
-        with col_g1:
-            st.subheader("📊 Por Tipo de Activo")
-            df_tipo = (
-                df_filtrado.groupby("Tipo_Activo")["Importe_Total"]
-                .sum()
-                .reset_index()
-            )
-            fig_tipo = px.pie(
-                df_tipo,
-                names="Tipo_Activo",
-                values="Importe_Total",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Bold,
-            )
-            st.plotly_chart(fig_tipo, use_container_width=True)
+        # Mapeo de la selección del usuario a la columna correspondiente del DataFrame
+        columna_map = {
+            "Tipo de Activo": "Tipo_Activo",
+            "Categoría": "Categoría",
+            "Región / País": "Región_País",
+        }
+        columna_seleccionada = columna_map[vista_grafico]
 
-        with col_g2:
-            st.subheader("📈 Por Categoría")
-            df_cat = (
-                df_filtrado.groupby("Categoría")["Importe_Total"]
-                .sum()
-                .reset_index()
-            )
-            fig_pie = px.pie(
-                df_cat,
-                names="Categoría",
-                values="Importe_Total",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Set3,
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
+        # Agrupar datos según la opción seleccionada
+        df_agrupado = (
+            df_filtrado.groupby(columna_seleccionada)["Importe_Total"]
+            .sum()
+            .reset_index()
+        )
 
-        with col_g3:
-            st.subheader("🌍 Por Región")
-            df_reg = (
-                df_filtrado.groupby("Región_País")["Importe_Total"]
-                .sum()
-                .reset_index()
-            )
-            fig_reg = px.pie(
-                df_reg,
-                names="Región_País",
-                values="Importe_Total",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel,
-            )
-            st.plotly_chart(fig_reg, use_container_width=True)
+        # Generar el gráfico de tarta (Donut) interactivo
+        fig_donut = px.pie(
+            df_agrupado,
+            names=columna_seleccionada,
+            values="Importe_Total",
+            hole=0.5,
+            color_discrete_sequence=px.colors.qualitative.Bold,
+        )
+        
+        # Personalizar diseño para que luzca limpio y moderno
+        fig_donut.update_traces(
+            textinfo="percent+label",
+            hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
+        )
+        fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=400)
 
+        # Mostrar el gráfico centrado en pantalla
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+    st.divider()
     st.subheader("📋 Historial de Movimientos")
     st.dataframe(df_filtrado, use_container_width=True)
 

@@ -74,6 +74,32 @@ if not df.empty and "Fecha" in df.columns:
 # --- BARRA LATERAL: FORMULARIO Y FILTROS ---
 st.sidebar.header("➕ Añadir Operación")
 
+# Selector de bróker FUERA del formulario para que reaccione al instante
+broker = st.sidebar.selectbox(
+    "Bróker",
+    [
+        "MyInvestor (0 € - Fondos)",
+        "Indexa Capital (Gestión automatizada)",
+        "Interactive Brokers",
+        "Degiro",
+        "Trade Republic",
+        "XTB",
+        "Otro / Personalizado",
+    ],
+    key="select_broker"
+)
+
+# Cálculo automático de comisión en tiempo real según el bróker seleccionado fuera
+comision_default = 0.0
+if "Trade Republic" in broker:
+    comision_default = 1.00
+elif "Degiro" in broker:
+    comision_default = 2.00
+elif "Interactive Brokers" in broker:
+    comision_default = 1.25
+else:
+    comision_default = 0.00
+
 with st.sidebar.form("formulario_operacion", clear_on_submit=False):
     fecha = st.date_input("Fecha de operación", value=date.today())
     tipo_movimiento = st.selectbox(
@@ -118,31 +144,6 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=False):
             format="%.2f",
             value=10.0,
         )
-
-    broker = st.selectbox(
-        "Bróker",
-        [
-            "MyInvestor (0 € - Fondos)",
-            "Indexa Capital (Gestión automatizada)",
-            "Interactive Brokers",
-            "Degiro",
-            "Trade Republic",
-            "XTB",
-            "Otro / Personalizado",
-        ],
-        key="select_broker"
-    )
-
-    # Cálculo automático preliminar de comisión según bróker seleccionado
-    comision_default = 0.0
-    if "Trade Republic" in broker:
-        comision_default = 1.00
-    elif "Degiro" in broker:
-        comision_default = 2.00
-    elif "Interactive Brokers" in broker:
-        comision_default = 1.25
-    else:
-        comision_default = 0.00
 
     comision = st.number_input(
         "Comisión estimada / aplicada (€)",

@@ -267,7 +267,7 @@ else:
     plusvalia_estimada = max(0.0, total_invertido * 0.12)
     impuestos_retirada = calcular_impuestos_tramos(plusvalia_estimada)
 
-    # Tarjetas superiores de KPIs
+    # --- TARJETAS SUPERIORES DE KPIs UBICADAS ARRIBA DEL TODO ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric(label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €")
@@ -283,95 +283,10 @@ else:
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        # --- DISEÑO EN DOS COLUMNAS PRINCIPALES ---
+        # --- DISEÑO EN DOS COLUMNAS MAESTRAS DESDE ARRIBA ---
         # Izquierda: Datos, Tablas, Dividendos/Ventas, Rebalanceo y Borrado
-        # Derecha: Bloque exclusivo de Gráficos Analíticos
+        # Derecha: Gráficos Analíticos situados al mismo nivel superior
         col_izq, col_der = st.columns([1.1, 0.9])
-
-        with col_izq:
-            st.subheader("📋 Datos y Gestión Operativa")
-
-            # Dividendos y Ventas en dos subcolumnas internas
-            sub_c1, sub_c2 = st.columns(2)
-            with sub_c1:
-                st.markdown("**💵 Dividendos**")
-                df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
-                if df_divs.empty:
-                    st.caption("Sin dividendos.")
-                else:
-                    st.metric(label="Cobrados", value=f"{dividendos_total:,.2f} €")
-                    st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
-
-            with sub_c2:
-                st.markdown("**💸 Ventas**")
-                df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
-                if df_ventas.empty:
-                    st.caption("Sin ventas.")
-                else:
-                    st.metric(label="Realizadas", value=f"{ventas_total:,.2f} €")
-                    st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
-
-            st.divider()
-
-            # Panel de Alertas de Rebalanceo
-            st.subheader("⚖️ Alertas de Rebalanceo")
-            categorias_existentes = df_filtrado["Categoría"].unique()
-            if len(categorias_existentes) > 0:
-                pesos_objetivo = {}
-                suma_pesos = 0
-                cols_reb = st.columns(len(categorias_existentes))
-                for i, cat in enumerate(categorias_existentes):
-                    with cols_reb[i]:
-                        pesos_objetivo[cat] = st.slider(f"Obj%: {cat}", 0, 100, int(100 / len(categorias_existentes)))
-                        suma_pesos += pesos_objetivo[cat]
-                
-                if suma_pesos != 100:
-                    st.warning(f"⚠️ Suma objetivo: {suma_pesos}% (ideal 100%)")
-                
-                df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
-                total_port = df_rebal["Importe_Total"].sum()
-                if total_port > 0:
-                    df_rebal["Porcentaje_Real"] = (df_rebal["Importe_Total"] / total_port) * 100
-                    df_rebal["Objetivo_%"] = df_rebal["Categoría"].map(pesos_objetivo)
-                    df_rebal["Desvío_%"] = df_rebal["Porcentaje_Real"] - df_rebal["Objetivo_%"]
-                    st.dataframe(
-                        df_rebal[["Categoría", "Porcentaje_Real", "Objetivo_%", "Desvío_%"]].style.format({
-                            "Porcentaje_Real": "{:.2f}%",
-                            "Objetivo_%": "{:.2f}%",
-                            "Desvío_%": "{:+.2f}%"
-                        }),
-                        use_container_width=True,
-                        height=160
-                    )
-
-            st.divider()
-
-            # Historial Completo
-            st.subheader("📑 Historial de Movimientos")
-            st.dataframe(df_filtrado, use_container_width=True, height=200)
-
-            # Gestión de Borrado
-            st.subheader("🗑️ Borrado de Operaciones")
-            opciones_borrar = {}
-            for idx, row in df.iterrows():
-                tipo_mov = row.get("Tipo_Movimiento", "Operación")
-                activo_nom = row.get("Activo", "Desconocido")
-                broker_nom = row.get("Broker", "N/A")
-                fecha_op = row.get("Fecha", "")
-                label = f"Fila {idx}: [{fecha_op}] {tipo_mov} de {activo_nom} ({broker_nom})"
-                opciones_borrar[label] = idx
-
-            if opciones_borrar:
-                operacion_a_borrar = st.selectbox(
-                    "Selecciona la operación a eliminar",
-                    list(opciones_borrar.keys()),
-                )
-                if st.button("🗑️ Eliminar Operación Seleccionada", type="primary"):
-                    idx_a_eliminar = opciones_borrar[operacion_a_borrar]
-                    df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
-                    df_nuevo.to_csv(DATA_FILE, index=False)
-                    st.success("¡Operación eliminada correctamente!")
-                    st.rerun()
 
         with col_der:
             st.subheader("📊 Análisis y Gráficos")
@@ -467,3 +382,88 @@ else:
                 )
                 fig_activos.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
                 st.plotly_chart(fig_activos, use_container_width=True)
+
+        with col_izq:
+            st.subheader("📋 Datos y Gestión Operativa")
+
+            # Dividendos y Ventas en dos subcolumnas internas
+            sub_c1, sub_c2 = st.columns(2)
+            with sub_c1:
+                st.markdown("**💵 Dividendos**")
+                df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
+                if df_divs.empty:
+                    st.caption("Sin dividendos.")
+                else:
+                    st.metric(label="Cobrados", value=f"{dividendos_total:,.2f} €")
+                    st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
+
+            with sub_c2:
+                st.markdown("**💸 Ventas**")
+                df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
+                if df_ventas.empty:
+                    st.caption("Sin ventas.")
+                else:
+                    st.metric(label="Realizadas", value=f"{ventas_total:,.2f} €")
+                    st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
+
+            st.divider()
+
+            # Panel de Alertas de Rebalanceo
+            st.subheader("⚖️ Alertas de Rebalanceo")
+            categorias_existentes = df_filtrado["Categoría"].unique()
+            if len(categorias_existentes) > 0:
+                pesos_objetivo = {}
+                suma_pesos = 0
+                cols_reb = st.columns(len(categorias_existentes))
+                for i, cat in enumerate(categorias_existentes):
+                    with cols_reb[i]:
+                        pesos_objetivo[cat] = st.slider(f"Obj%: {cat}", 0, 100, int(100 / len(categorias_existentes)))
+                        suma_pesos += pesos_objetivo[cat]
+                
+                if suma_pesos != 100:
+                    st.warning(f"⚠️ Suma objetivo: {suma_pesos}% (ideal 100%)")
+                
+                df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
+                total_port = df_rebal["Importe_Total"].sum()
+                if total_port > 0:
+                    df_rebal["Porcentaje_Real"] = (df_rebal["Importe_Total"] / total_port) * 100
+                    df_rebal["Objetivo_%"] = df_rebal["Categoría"].map(pesos_objetivo)
+                    df_rebal["Desvío_%"] = df_rebal["Porcentaje_Real"] - df_rebal["Objetivo_%"]
+                    st.dataframe(
+                        df_rebal[["Categoría", "Porcentaje_Real", "Objetivo_%", "Desvío_%"]].style.format({
+                            "Porcentaje_Real": "{:.2f}%",
+                            "Objetivo_%": "{:.2f}%",
+                            "Desvío_%": "{:+.2f}%"
+                        }),
+                        use_container_width=True,
+                        height=160
+                    )
+
+            st.divider()
+
+            # Historial Completo
+            st.subheader("📑 Historial de Movimientos")
+            st.dataframe(df_filtrado, use_container_width=True, height=200)
+
+            # Gestión de Borrado
+            st.subheader("🗑️ Borrado de Operaciones")
+            opciones_borrar = {}
+            for idx, row in df.iterrows():
+                tipo_mov = row.get("Tipo_Movimiento", "Operación")
+                activo_nom = row.get("Activo", "Desconocido")
+                broker_nom = row.get("Broker", "N/A")
+                fecha_op = row.get("Fecha", "")
+                label = f"Fila {idx}: [{fecha_op}] {tipo_mov} de {activo_nom} ({broker_nom})"
+                opciones_borrar[label] = idx
+
+            if opciones_borrar:
+                operacion_a_borrar = st.selectbox(
+                    "Selecciona la operación a eliminar",
+                    list(opciones_borrar.keys()),
+                )
+                if st.button("🗑️ Eliminar Operación Seleccionada", type="primary"):
+                    idx_a_eliminar = opciones_borrar[operacion_a_borrar]
+                    df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
+                    df_nuevo.to_csv(DATA_FILE, index=False)
+                    st.success("¡Operación eliminada correctamente!")
+                    st.rerun()

@@ -39,7 +39,7 @@ df = cargar_datos()
 
 st.title("📈 Mi Cartera de Inversiones Personal")
 
-if not df.empty:
+if not df.empty and "Fecha" in df.columns:
     df["Fecha"] = pd.to_datetime(df["Fecha"]).dt.date
 
 # --- BARRA LATERAL: FORMULARIO Y FILTROS ---
@@ -106,11 +106,7 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
         ],
     )
 
-    # Lógica de cálculo automático de comisión orientativa según el bróker
-    # (Calculamos sobre el importe base de la operación)
     comision_calculada = 0.0
-
-    # Estimamos el importe base para calcular comisiones proporcionales si procede
     importe_base = (
         importe_manual
         if tipo_activo in ["Fondos Indexados", "ETFs"]
@@ -118,19 +114,16 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
     )
 
     if "MyInvestor" in broker or "Indexa Capital" in broker:
-        comision_calculada = 0.0  # Habitualmente 0€ en compra de fondos indexados propios
+        comision_calculada = 0.0
     elif "Trade Republic" in broker:
-        comision_calculada = 1.00  # Tarifa fija típica por orden externa
+        comision_calculada = 1.00
     elif "XTB" in broker:
-        comision_calculada = (
-            0.0 if importe_base <= 100000 else 0.2
-        )  > 0  # 0% hasta 100k mes
+        comision_calculada = 0.0
     elif "Degiro" in broker:
-        comision_calculada = 2.00  # Comisión fija orientativa por bolsa/operación
+        comision_calculada = 2.00
     elif "Interactive Brokers" in broker:
-        comision_calculada = 1.25  # Tarifa fija muy baja orientativa
+        comision_calculada = 1.25
 
-    # Permitir al usuario ver y ajustar la comisión calculada automáticamente si lo desea
     comision = st.number_input(
         "Comisión estimada / aplicada (€) [Calculada automáticamente]",
         min_value=0.0,
@@ -188,35 +181,37 @@ st.sidebar.header("🔍 Filtros de Búsqueda")
 
 df_filtrado = df.copy()
 
-if not df.empty:
+if not df.empty and "Tipo_Activo" in df.columns:
     tipos_disponibles = ["Todos"] + list(df["Tipo_Activo"].unique())
     filtro_tipo = st.sidebar.selectbox("Filtrar por Tipo de Activo", tipos_disponibles)
     if filtro_tipo != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Tipo_Activo"] == filtro_tipo]
 
-    activos_disponibles = ["Todos"] + list(df_filtrado["Activo"].unique())
-    filtro_activo = st.sidebar.selectbox("Filtrar por Activo", activos_disponibles)
-    if filtro_activo != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Activo"] == filtro_activo]
+    if "Activo" in df_filtrado.columns:
+        activos_disponibles = ["Todos"] + list(df_filtrado["Activo"].unique())
+        filtro_activo = st.sidebar.selectbox("Filtrar por Activo", activos_disponibles)
+        if filtro_activo != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Activo"] == filtro_activo]
 
-    min_f = min(df["Fecha"])
-    max_f = max(df["Fecha"])
-    rango_fechas = st.sidebar.date_input(
-        "Rango de fechas", value=(min_f, max_f), min_value=min_f, max_value=max_f
-    )
-    if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
-        inicio, fin = rango_fechas
-        df_filtrado = df_filtrado[
-            (df_filtrado["Fecha"] >= inicio) & (df_filtrado["Fecha"] <= fin)
-        ]
+    if "Fecha" in df.columns and not df["Fecha"].empty:
+        min_f = min(df["Fecha"])
+        max_f = max(df["Fecha"])
+        rango_fechas = st.sidebar.date_input(
+            "Rango de fechas", value=(min_f, max_f), min_value=min_f, max_value=max_f
+        )
+        if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
+            inicio, fin = rango_fechas
+            df_filtrado = df_filtrado[
+                (df_filtrado["Fecha"] >= inicio) & (df_filtrado["Fecha"] <= fin)
+            ]
 
 
 # --- CÁLCULO DE IMPORTES TOTALES ---
 def calcular_importe(row):
-    if row["Tipo_Activo"] in ["Fondos Indexados", "ETFs"]:
-        return row["Importe_Manual"] + row["Comision"]
+    if row.get("Tipo_Activo") in ["Fondos Indexados", "ETFs"]:
+        return row.get("Importe_Manual", 0.0) + row.get("Comision", 0.0)
     else:
-        return (row["Participaciones"] * row["Precio_Unitario"]) + row["Comision"]
+        return (row.get("Participaciones", 0.0) * row.get("Precio_Unitario", 0.0)) + row.get("Comision", 0.0)
 
 
 if not df.empty:
@@ -226,7 +221,7 @@ if not df.empty:
 # --- PANEL PRINCIPAL ---
 if df.empty:
     st.info(
-        "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda."
+        "👋 ¡Bienvenido! Todavía no hay operaciones registradas. Añade tu primera operación desde el menú desplegable de la izquierda para generar el archivo de datos automáticamente."
     )
 else:
     total_invertido = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"][
@@ -324,10 +319,14 @@ else:
 
     col_b1, col_b2 = st.columns([2, 1])
     with col_b1:
-        opciones_borrar = {
-            f"Fila {idx}: [{row['Fecha']}] {row['Tipo_Movimiento']} de {row['Activo']} ({row['Broker']})": idx
-            for idx, row in df.iterrows()
-        }
+        opciones_borrar = {}
+        for idx, row in df.iterrows():
+            tipo_mov = row.get("Tipo_Movimiento", "Operación")
+            activo_nom = row.get("Activo", "Desconocido")
+            broker_nom = row.get("Broker", "N/A")
+            fecha_op = row.get("Fecha", "")
+            label = f"Fila {idx}: [{fecha_op}] {tipo_mov} de {activo_nom} ({broker_nom})"
+            opciones_borrar[label] = idx
 
         if opciones_borrar:
             operacion_a_borrar = st.selectbox(

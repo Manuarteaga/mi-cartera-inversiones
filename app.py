@@ -1,11 +1,3 @@
-¡Excelente idea! Cambiar los múltiples gráficos de tarta por un gráfico dinámico con selector de botones (radio buttons o selectbox) limpia muchísimo la interfaz de la aplicación y deja un panel principal mucho más profesional, ordenado y limpio de un solo vistazo. Además, los gráficos de Plotly ya vienen preparados de serie para que, al pasar el cursor (hover), te muestren exactamente el nombre y el porcentaje o valor de cada porción.
-
-Para hacerlo, vamos a sustituir los tres gráficos independientes por un único selector superior que te permita elegir qué vista quieres consultar: "Tipo de Activo", "Categoría" o "Región / País", renderizando un único gráfico de tarta dinámico que se adapta al instante.
-
-Código actualizado para app.py
-Entra en tu repositorio de GitHub, edita tu archivo app.py, borra todo el contenido anterior y pega esta versión actualizada:
-
-Python
 from datetime import date
 import pandas as pd
 import plotly.express as px

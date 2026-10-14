@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Mi Cartera de Inversiones", page_icon="📈", layout="wide"
 )
 
-# Archivo local donde se guardan los datos
+# Archivo donde se guardan los datos
 DATA_FILE = "cartera_datos.csv"
 
 
@@ -21,8 +21,9 @@ def cargar_datos():
         return pd.DataFrame(
             columns=[
                 "Fecha",
-                "Tipo",
+                "Tipo_Movimiento",
                 "Activo",
+                "Tipo_Activo",
                 "Categoría",
                 "Región_País",
                 "Participaciones",
@@ -41,18 +42,27 @@ st.sidebar.header("➕ Añadir Operación")
 
 with st.sidebar.form("formulario_operacion", clear_on_submit=True):
     fecha = st.date_input("Fecha de operación", value=date.today())
-    tipo = st.selectbox("Tipo de movimiento", ["Compra", "Venta", "Dividendo"])
-    activo = st.text_input(
-        "Nombre del Activo / Fondo", placeholder="Ej. Vanguard Global Stock"
+    tipo_movimiento = st.selectbox(
+        "Tipo de movimiento", ["Compra", "Venta", "Dividendo"]
     )
+    activo = st.text_input(
+        "Nombre del Activo / Fondo", placeholder="Ej. MSCI World / Telefónica"
+    )
+
+    # NUEVO DESPLEGABLE: Tipo de Activo
+    tipo_activo = st.selectbox(
+        "Tipo de Activo",
+        ["Fondos Indexados", "ETFs", "Acciones", "Fondos Monetarios", "Otro"],
+    )
+
     categoria = st.selectbox(
-        "Categoría",
+        "Categoría / Estrategia",
         [
             "Renta Variable Global",
             "Renta Fija",
             "Emergentes",
             "Sectorial",
-            "Cripto / Otro",
+            "Cripto / Efectivo",
         ],
     )
     region = st.selectbox(
@@ -85,8 +95,9 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
                 [
                     {
                         "Fecha": fecha,
-                        "Tipo": tipo,
+                        "Tipo_Movimiento": tipo_movimiento,
                         "Activo": activo,
+                        "Tipo_Activo": tipo_activo,
                         "Categoría": categoria,
                         "Región_País": region,
                         "Participaciones": participaciones,
@@ -110,9 +121,9 @@ else:
         "Comision"
     ]
 
-    total_invertido = df[df["Tipo"] == "Compra"][
+    total_invertido = df[df["Tipo_Movimiento"] == "Compra"][
         "Importe_Total"
-    ].sum() - df[df["Tipo"] == "Venta"]["Importe_Total"].sum()
+    ].sum() - df[df["Tipo_Movimiento"] == "Venta"]["Importe_Total"].sum()
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -133,10 +144,25 @@ else:
     st.divider()
 
     # Gráficos
-    col_g1, col_g2 = st.columns(2)
+    col_g1, col_g2, col_g3 = st.columns(3)
 
     with col_g1:
-        st.subheader("📊 Distribución por Categoría")
+        st.subheader("📊 Por Tipo de Activo")
+        if "Tipo_Activo" in df.columns:
+            df_tipo = (
+                df.groupby("Tipo_Activo")["Importe_Total"].sum().reset_index()
+            )
+            fig_tipo = px.pie(
+                df_tipo,
+                names="Tipo_Activo",
+                values="Importe_Total",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Bold,
+            )
+            st.plotly_chart(fig_tipo, use_container_width=True)
+
+    with col_g2:
+        st.subheader("📈 Por Categoría")
         df_cat = df.groupby("Categoría")["Importe_Total"].sum().reset_index()
         fig_pie = px.pie(
             df_cat,
@@ -147,8 +173,8 @@ else:
         )
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    with col_g2:
-        st.subheader("🌍 Distribución por Región / País")
+    with col_g3:
+        st.subheader("🌍 Por Región")
         df_reg = df.groupby("Región_País")["Importe_Total"].sum().reset_index()
         fig_reg = px.pie(
             df_reg,

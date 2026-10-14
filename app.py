@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# Configuración de la página
+# Configuración de la página en modo ancho
 st.set_page_config(
     page_title="Mi Cartera de Inversiones", page_icon="📈", layout="wide"
 )
@@ -283,199 +283,187 @@ else:
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        # --- 1. DIVIDENDOS Y VENTAS EN LA MISMA FILA ---
-        col_fila1, col_fila2 = st.columns(2)
+        # --- DISEÑO EN DOS COLUMNAS PRINCIPALES ---
+        # Izquierda: Datos, Tablas, Dividendos/Ventas, Rebalanceo y Borrado
+        # Derecha: Bloque exclusivo de Gráficos Analíticos
+        col_izq, col_der = st.columns([1.1, 0.9])
 
-        with col_fila1:
-            st.subheader("💵 Dividendos y Rendimientos")
-            df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
-            if df_divs.empty:
-                st.info("No hay dividendos registrados.")
-            else:
-                st.metric(label="Total Dividendos Cobrados", value=f"{dividendos_total:,.2f} €")
-                st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True)
+        with col_izq:
+            st.subheader("📋 Datos y Gestión Operativa")
 
-        with col_fila2:
-            st.subheader("💸 Gestión de Ventas")
-            df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
-            if df_ventas.empty:
-                st.info("No hay ventas registradas.")
-            else:
-                st.metric(label="Total Ventas Realizadas", value=f"{ventas_total:,.2f} €")
-                st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True)
+            # Dividendos y Ventas en dos subcolumnas internas
+            sub_c1, sub_c2 = st.columns(2)
+            with sub_c1:
+                st.markdown("**💵 Dividendos**")
+                df_divs = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]
+                if df_divs.empty:
+                    st.caption("Sin dividendos.")
+                else:
+                    st.metric(label="Cobrados", value=f"{dividendos_total:,.2f} €")
+                    st.dataframe(df_divs[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
 
-        st.divider()
+            with sub_c2:
+                st.markdown("**💸 Ventas**")
+                df_ventas = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"]
+                if df_ventas.empty:
+                    st.caption("Sin ventas.")
+                else:
+                    st.metric(label="Realizadas", value=f"{ventas_total:,.2f} €")
+                    st.dataframe(df_ventas[["Fecha", "Activo", "Importe_Total"]], use_container_width=True, height=150)
 
-        # --- 2. PANEL DE ALERTAS DE REBALANCEO ---
-        st.subheader("⚖️ Panel de Alertas y Rebalanceo por Categoría")
-        st.write("Establece qué porcentaje ideal te gustaría tener en cada categoría de inversión para comprobar desvíos:")
-        
-        categorias_existentes = df_filtrado["Categoría"].unique()
-        if len(categorias_existentes) > 0:
-            cols_reb = st.columns(len(categorias_existentes))
-            pesos_objetivo = {}
-            suma_pesos = 0
-            
-            for i, cat in enumerate(categorias_existentes):
-                with cols_reb[i]:
-                    pesos_objetivo[cat] = st.slider(f"Objetivo %: {cat}", 0, 100, int(100 / len(categorias_existentes)))
-                    suma_pesos += pesos_objetivo[cat]
-            
-            if suma_pesos != 100:
-                st.warning(f"⚠️ La suma de los porcentajes objetivo actuales es {suma_pesos}%. Lo ideal es que sume exactamente el 100%.")
-            
-            df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
-            total_port = df_rebal["Importe_Total"].sum()
-            
-            if total_port > 0:
-                df_rebal["Porcentaje_Real"] = (df_rebal["Importe_Total"] / total_port) * 100
-                df_rebal["Objetivo_%"] = df_rebal["Categoría"].map(pesos_objetivo)
-                df_rebal["Desvío_%"] = df_rebal["Porcentaje_Real"] - df_rebal["Objetivo_%"]
+            st.divider()
+
+            # Panel de Alertas de Rebalanceo
+            st.subheader("⚖️ Alertas de Rebalanceo")
+            categorias_existentes = df_filtrado["Categoría"].unique()
+            if len(categorias_existentes) > 0:
+                pesos_objetivo = {}
+                suma_pesos = 0
+                cols_reb = st.columns(len(categorias_existentes))
+                for i, cat in enumerate(categorias_existentes):
+                    with cols_reb[i]:
+                        pesos_objetivo[cat] = st.slider(f"Obj%: {cat}", 0, 100, int(100 / len(categorias_existentes)))
+                        suma_pesos += pesos_objetivo[cat]
                 
-                st.dataframe(
-                    df_rebal[["Categoría", "Importe_Total", "Porcentaje_Real", "Objetivo_%", "Desvío_%"]].style.format({
-                        "Importe_Total": "{:,.2f} €",
-                        "Porcentaje_Real": "{:.2f}%",
-                        "Objetivo_%": "{:.2f}%",
-                        "Desvío_%": "{:+.2f}%"
-                    }),
-                    use_container_width=True
+                if suma_pesos != 100:
+                    st.warning(f"⚠️ Suma objetivo: {suma_pesos}% (ideal 100%)")
+                
+                df_rebal = df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
+                total_port = df_rebal["Importe_Total"].sum()
+                if total_port > 0:
+                    df_rebal["Porcentaje_Real"] = (df_rebal["Importe_Total"] / total_port) * 100
+                    df_rebal["Objetivo_%"] = df_rebal["Categoría"].map(pesos_objetivo)
+                    df_rebal["Desvío_%"] = df_rebal["Porcentaje_Real"] - df_rebal["Objetivo_%"]
+                    st.dataframe(
+                        df_rebal[["Categoría", "Porcentaje_Real", "Objetivo_%", "Desvío_%"]].style.format({
+                            "Porcentaje_Real": "{:.2f}%",
+                            "Objetivo_%": "{:.2f}%",
+                            "Desvío_%": "{:+.2f}%"
+                        }),
+                        use_container_width=True,
+                        height=160
+                    )
+
+            st.divider()
+
+            # Historial Completo
+            st.subheader("📑 Historial de Movimientos")
+            st.dataframe(df_filtrado, use_container_width=True, height=200)
+
+            # Gestión de Borrado
+            st.subheader("🗑️ Borrado de Operaciones")
+            opciones_borrar = {}
+            for idx, row in df.iterrows():
+                tipo_mov = row.get("Tipo_Movimiento", "Operación")
+                activo_nom = row.get("Activo", "Desconocido")
+                broker_nom = row.get("Broker", "N/A")
+                fecha_op = row.get("Fecha", "")
+                label = f"Fila {idx}: [{fecha_op}] {tipo_mov} de {activo_nom} ({broker_nom})"
+                opciones_borrar[label] = idx
+
+            if opciones_borrar:
+                operacion_a_borrar = st.selectbox(
+                    "Selecciona la operación a eliminar",
+                    list(opciones_borrar.keys()),
                 )
-                st.info("💡 **Consejo de aportación:** Dirige tus próximas aportaciones al activo o categoría con desvío negativo para reequilibrar la cartera.")
+                if st.button("🗑️ Eliminar Operación Seleccionada", type="primary"):
+                    idx_a_eliminar = opciones_borrar[operacion_a_borrar]
+                    df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
+                    df_nuevo.to_csv(DATA_FILE, index=False)
+                    st.success("¡Operación eliminada correctamente!")
+                    st.rerun()
 
-        st.divider()
+        with col_der:
+            st.subheader("📊 Análisis y Gráficos")
 
-        # --- 3. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
-        st.subheader("📊 Distribución de la Cartera")
-        
-        vista_grafico = st.radio(
-            "Ver distribución por:",
-            ["Tipo de Activo", "Categoría", "Región / País"],
-            horizontal=True,
-            key="radio_distribucion"
-        )
-
-        columna_map = {
-            "Tipo de Activo": "Tipo_Activo",
-            "Categoría": "Categoría",
-            "Región / País": "Región_País",
-        }
-        columna_seleccionada = columna_map[vista_grafico]
-
-        df_agrupado = (
-            df_filtrado.groupby(columna_seleccionada)["Importe_Total"]
-            .sum()
-            .reset_index()
-        )
-
-        fig_donut = px.pie(
-            df_agrupado,
-            names=columna_seleccionada,
-            values="Importe_Total",
-            hole=0.5,
-            color_discrete_sequence=px.colors.qualitative.Bold,
-        )
-        fig_donut.update_traces(
-            textinfo="percent+label",
-            hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
-        )
-        fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
-        st.plotly_chart(fig_donut, use_container_width=True)
-
-        st.divider()
-
-        # --- 4. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
-        st.subheader("📈 Evolución Temporal y Proyección Futura")
-
-        df_temporal = df_filtrado.sort_values("Fecha").copy()
-        df_temporal["Flujo"] = df_temporal.apply(
-            lambda r: r["Importe_Total"] if r["Tipo_Movimiento"] == "Compra" else (-r["Importe_Total"] if r["Tipo_Movimiento"] == "Venta" else 0),
-            axis=1
-        )
-        df_temporal["Patrimonio_Acumulado"] = df_temporal["Flujo"].cumsum()
-
-        if not df_temporal.empty:
-            ultima_fecha = pd.to_datetime(df_temporal["Fecha"].max())
-            ultimo_valor = df_temporal["Patrimonio_Acumulado"].iloc[-1]
-            
-            fechas_futuras = [ultima_fecha + timedelta(days=30*i) for i in range(1, 61)]
-            valores_futuros = [ultimo_valor * ((1 + 0.06/12) ** i) for i in range(1, 61)]
-            
-            df_proyeccion = pd.DataFrame({
-                "Fecha": [f.date() for f in fechas_futuras],
-                "Patrimonio_Acumulado": valores_futuros,
-                "Tipo": "Proyección Futura (Est. 6% anual)"
-            })
-            
-            df_temporal["Tipo"] = "Evolución Real Histórica"
-            df_combinado = pd.concat([df_temporal[["Fecha", "Patrimonio_Acumulado", "Tipo"]], df_proyeccion])
-        else:
-            df_combinado = df_temporal
-
-        modo_evolucion = st.radio(
-            "Ver proyección de evolución:",
-            ["Evolución Global de la Cartera", "Desglosado por Activos Individuales"],
-            horizontal=True,
-            key="radio_evolucion"
-        )
-
-        if modo_evolucion == "Evolución Global de la Cartera":
-            fig_line = px.line(
-                df_combinado,
-                x="Fecha",
-                y="Patrimonio_Acumulado",
-                color="Tipo",
-                markers=True,
-                color_discrete_map={"Evolución Real Histórica": "#1f77b4", "Proyección Futura (Est. 6% anual)": "#2ca02c"}
+            # --- 1. GRÁFICO DINÁMICO DE DISTRIBUCIÓN (DONUT) ---
+            vista_grafico = st.selectbox(
+                "Ver distribución por:",
+                ["Tipo de Activo", "Categoría", "Región / País"],
+                key="select_distribucion"
             )
-            fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=400)
-            st.plotly_chart(fig_line, use_container_width=True)
-        else:
-            fig_activos = px.line(
-                df_filtrado.sort_values("Fecha"),
-                x="Fecha",
-                y="Importe_Total",
-                color="Activo",
-                markers=True,
-                title="Evolución de aportaciones por Activo Individual"
+
+            columna_map = {
+                "Tipo de Activo": "Tipo_Activo",
+                "Categoría": "Categoría",
+                "Región / País": "Región_País",
+            }
+            columna_seleccionada = columna_map[vista_grafico]
+
+            df_agrupado = (
+                df_filtrado.groupby(columna_seleccionada)["Importe_Total"]
+                .sum()
+                .reset_index()
             )
-            fig_activos.update_layout(margin=dict(t=30, b=20, l=20, r=20), height=400)
-            st.plotly_chart(fig_activos, use_container_width=True)
 
-    st.divider()
-    st.subheader("📋 Historial de Movimientos")
-    st.dataframe(df_filtrado, use_container_width=True)
-
-    # --- SECCIÓN DE BORRADO DE OPERACIONES ---
-    st.divider()
-    st.subheader("🗑️ Gestión de Borrado")
-    col_b1, col_b2 = st.columns([2, 1])
-    with col_b1:
-        opciones_borrar = {}
-        for idx, row in df.iterrows():
-            tipo_mov = row.get("Tipo_Movimiento", "Operación")
-            activo_nom = row.get("Activo", "Desconocido")
-            broker_nom = row.get("Broker", "N/A")
-            fecha_op = row.get("Fecha", "")
-            label = f"Fila {idx}: [{fecha_op}] {tipo_mov} de {activo_nom} ({broker_nom})"
-            opciones_borrar[label] = idx
-
-        if opciones_borrar:
-            operacion_a_borrar = st.selectbox(
-                "Selecciona la operación a eliminar",
-                list(opciones_borrar.keys()),
+            fig_donut = px.pie(
+                df_agrupado,
+                names=columna_seleccionada,
+                values="Importe_Total",
+                hole=0.5,
+                color_discrete_sequence=px.colors.qualitative.Bold,
             )
-        else:
-            operacion_a_borrar = None
+            fig_donut.update_traces(
+                textinfo="percent+label",
+                hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"
+            )
+            fig_donut.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=350)
+            st.plotly_chart(fig_donut, use_container_width=True)
 
-    with col_b2:
-        st.write("")
-        st.write("")
-        if opciones_borrar and st.button(
-            "🗑️ Eliminar Operación Seleccionada", type="primary"
-        ):
-            idx_a_eliminar = opciones_borrar[operacion_a_borrar]
-            df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
-            df_nuevo.to_csv(DATA_FILE, index=False)
-            st.success("¡Operación eliminada correctamente!")
-            st.rerun()
+            st.divider()
+
+            # --- 2. GRÁFICO DE EVOLUCIÓN TEMPORAL Y PROYECCIÓN FUTURA ---
+            st.subheader("📈 Evolución y Proyección")
+
+            df_temporal = df_filtrado.sort_values("Fecha").copy()
+            df_temporal["Flujo"] = df_temporal.apply(
+                lambda r: r["Importe_Total"] if r["Tipo_Movimiento"] == "Compra" else (-r["Importe_Total"] if r["Tipo_Movimiento"] == "Venta" else 0),
+                axis=1
+            )
+            df_temporal["Patrimonio_Acumulado"] = df_temporal["Flujo"].cumsum()
+
+            if not df_temporal.empty:
+                ultima_fecha = pd.to_datetime(df_temporal["Fecha"].max())
+                ultimo_valor = df_temporal["Patrimonio_Acumulado"].iloc[-1]
+                
+                fechas_futuras = [ultima_fecha + timedelta(days=30*i) for i in range(1, 61)]
+                valores_futuros = [ultimo_valor * ((1 + 0.06/12) ** i) for i in range(1, 61)]
+                
+                df_proyeccion = pd.DataFrame({
+                    "Fecha": [f.date() for f in fechas_futuras],
+                    "Patrimonio_Acumulado": valores_futuros,
+                    "Tipo": "Proyección Futura (Est. 6% anual)"
+                })
+                
+                df_temporal["Tipo"] = "Evolución Real Histórica"
+                df_combinado = pd.concat([df_temporal[["Fecha", "Patrimonio_Acumulado", "Tipo"]], df_proyeccion])
+            else:
+                df_combinado = df_temporal
+
+            modo_evolucion = st.selectbox(
+                "Ver proyección de evolución:",
+                ["Evolución Global de la Cartera", "Desglosado por Activos Individuales"],
+                key="select_evolucion"
+            )
+
+            if modo_evolucion == "Evolución Global de la Cartera":
+                fig_line = px.line(
+                    df_combinado,
+                    x="Fecha",
+                    y="Patrimonio_Acumulado",
+                    color="Tipo",
+                    markers=True,
+                    color_discrete_map={"Evolución Real Histórica": "#1f77b4", "Proyección Futura (Est. 6% anual)": "#2ca02c"}
+                )
+                fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
+                st.plotly_chart(fig_line, use_container_width=True)
+            else:
+                fig_activos = px.line(
+                    df_filtrado.sort_values("Fecha"),
+                    x="Fecha",
+                    y="Importe_Total",
+                    color="Activo",
+                    markers=True,
+                )
+                fig_activos.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=380)
+                st.plotly_chart(fig_activos, use_container_width=True)

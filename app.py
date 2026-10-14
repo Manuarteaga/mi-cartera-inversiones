@@ -1,4 +1,3 @@
-import io
 from datetime import date
 import pandas as pd
 import plotly.express as px
@@ -37,7 +36,11 @@ df = cargar_datos()
 
 st.title("📈 Mi Cartera de Inversiones Personal")
 
-# --- FORMULARIO LATERAL ---
+# Asegurarse de que la fecha sea tipo fecha para los filtros
+if not df.empty:
+    df["Fecha"] = pd.to_datetime(df["Fecha"]).dt.date
+
+# --- BARRA LATERAL: FORMULARIO Y FILTROS ---
 st.sidebar.header("➕ Añadir Operación")
 
 with st.sidebar.form("formulario_operacion", clear_on_submit=True):
@@ -48,13 +51,10 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
     activo = st.text_input(
         "Nombre del Activo / Fondo", placeholder="Ej. MSCI World / Telefónica"
     )
-
-    # NUEVO DESPLEGABLE: Tipo de Activo
     tipo_activo = st.selectbox(
         "Tipo de Activo",
         ["Fondos Indexados", "ETFs", "Acciones", "Fondos Monetarios", "Otro"],
     )
-
     categoria = st.selectbox(
         "Categoría / Estrategia",
         [
@@ -111,31 +111,73 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             st.sidebar.success(f"¡Operación en {activo} guardada!")
             st.rerun()
 
+# --- FILTROS DE BÚSQUEDA EN BARRA LATERAL ---
+st.sidebar.divider()
+st.sidebar.header("🔍 Filtros de Búsqueda")
+
+df_filtrado = df.copy()
+
+if not df.empty:
+    # Filtro por Tipo de Activo
+    tipos_disponibles = ["Todos"] + list(df["Tipo_Activo"].unique())
+    filtro_tipo = st.sidebar.selectbox("Filtrar por Tipo de Activo", tipos_disponibles)
+    if filtro_tipo != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Tipo_Activo"] == filtro_tipo]
+
+    # Filtro por Activo específico
+    activos_disponibles = ["Todos"] + list(df_filtrado["Activo"].unique())
+    filtro_activo = st.sidebar.selectbox("Filtrar por Activo", activos_disponibles)
+    if filtro_activo != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Activo"] == filtro_activo]
+
+    # Filtro por Rango de Fechas
+    min_f = min(df["Fecha"])
+    max_f = max(df["Fecha"])
+    rango_fechas = st.sidebar.date_input(
+        "Rango de fechas", value=(min_f, max_f), min_value=min_f, max_value=max_f
+    )
+    if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
+        inicio, fin = rango_fechas
+        df_filtrado = df_filtrado[
+            (df_filtrado["Fecha"] >= inicio) & (df_filtrado["Fecha"] <= fin)
+        ]
+
+
 # --- PANEL PRINCIPAL ---
 if df.empty:
     st.info(
         "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda."
     )
 else:
+    # Calcular Importes
     df["Importe_Total"] = (df["Participaciones"] * df["Precio_Unitario"]) + df[
         "Comision"
     ]
+    df_filtrado["Importe_Total"] = (
+        df_filtrado["Participaciones"] * df_filtrado["Precio_Unitario"]
+    ) + df_filtrado["Comision"]
 
-    total_invertido = df[df["Tipo_Movimiento"] == "Compra"][
+    total_invertido = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"][
         "Importe_Total"
-    ].sum() - df[df["Tipo_Movimiento"] == "Venta"]["Importe_Total"].sum()
+    ].sum() - df_filtrado[df_filtrado["Tipo_Movimiento"] == "Venta"][
+        "Importe_Total"
+    ].sum()
+    total_comisiones = df_filtrado["Comision"].sum()
 
-    col1, col2, col3 = st.columns(3)
+    # Métricas Superiores
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric(
             label="Dinero Neto Invertido", value=f"{total_invertido:,.2f} €"
         )
     with col2:
-        st.metric(label="Total Operaciones", value=len(df))
+        st.metric(label="Comisiones Totales", value=f"{total_comisiones:,.2f} €")
     with col3:
+        st.metric(label="Operaciones (Filtradas / Total)", value=f"{len(df_filtrado)} / {len(df)}")
+    with col4:
         csv_data = df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="📥 Descargar Cartera en CSV",
+            label="📥 Descargar Cartera CSV",
             data=csv_data,
             file_name="mi_cartera_inversiones.csv",
             mime="text/csv",
@@ -143,14 +185,16 @@ else:
 
     st.divider()
 
-    # Gráficos
-    col_g1, col_g2, col_g3 = st.columns(3)
+    # Gráficos con base en los datos filtrados
+    if df_filtrado.empty:
+        st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
+    else:
+        col_g1, col_g2, col_g3 = st.columns(3)
 
-    with col_g1:
-        st.subheader("📊 Por Tipo de Activo")
-        if "Tipo_Activo" in df.columns:
+        with col_g1:
+            st.subheader("📊 Por Tipo de Activo")
             df_tipo = (
-                df.groupby("Tipo_Activo")["Importe_Total"].sum().reset_index()
+                df_filtrado.groupby("Tipo_Activo")["Importe_Total"].sum().reset_index()
             )
             fig_tipo = px.pie(
                 df_tipo,
@@ -161,29 +205,67 @@ else:
             )
             st.plotly_chart(fig_tipo, use_container_width=True)
 
-    with col_g2:
-        st.subheader("📈 Por Categoría")
-        df_cat = df.groupby("Categoría")["Importe_Total"].sum().reset_index()
-        fig_pie = px.pie(
-            df_cat,
-            names="Categoría",
-            values="Importe_Total",
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Set3,
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        with col_g2:
+            st.subheader("📈 Por Categoría")
+            df_cat = (
+                df_filtrado.groupby("Categoría")["Importe_Total"].sum().reset_index()
+            )
+            fig_pie = px.pie(
+                df_cat,
+                names="Categoría",
+                values="Importe_Total",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Set3,
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-    with col_g3:
-        st.subheader("🌍 Por Región")
-        df_reg = df.groupby("Región_País")["Importe_Total"].sum().reset_index()
-        fig_reg = px.pie(
-            df_reg,
-            names="Región_País",
-            values="Importe_Total",
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Pastel,
-        )
-        st.plotly_chart(fig_reg, use_container_width=True)
+        with col_g3:
+            st.subheader("🌍 Por Región")
+            df_reg = (
+                df_filtrado.groupby("Región_País")["Importe_Total"].sum().reset_index()
+            )
+            fig_reg = px.pie(
+                df_reg,
+                names="Región_País",
+                values="Importe_Total",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Pastel,
+            )
+            st.plotly_chart(fig_reg, use_container_width=True)
 
+    # Tabla detallada filtrada
     st.subheader("📋 Historial de Movimientos")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df_filtrado, use_container_width=True)
+
+    # --- SECCIÓN DE BORRADO DE OPERACIONES ---
+    st.divider()
+    st.subheader("🗑️ Gestión de Borrado")
+    st.write(
+        "Si te has equivocado al introducir alguna operación, puedes seleccionarla por su número de fila y eliminarla:"
+    )
+
+    col_b1, col_b2 = st.columns([2, 1])
+    with col_b1:
+        # Creamos una lista con el índice y una descripción de la operación para identificarla fácil
+        opciones_borrar = {
+            f"Fila {idx}: [{row['Fecha']}] {row['Tipo_Movimiento']} de {row['Participaciones']} de {row['Activo']}": idx
+            for idx, row in df.iterrows()
+        }
+        
+        if opciones_borrar:
+            operacion_a_borrar = st.selectbox(
+                "Selecciona la operación a eliminar", list(opciones_borrar.keys())
+            )
+        else:
+            operacion_a_borrar = None
+
+    with col_b2:
+        st.write("")  # Espaciador visual
+        st.write("")
+        if opciones_borrar and st.button("🗑️ Eliminar Operación Seleccionada", type="primary"):
+            idx_a_eliminar = opciones_borrar[operacion_a_borrar]
+            df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
+            # Guardamos el archivo sin la fila eliminada
+            df_nuevo.to_csv(DATA_FILE, index=False)
+            st.success("¡Operación eliminada correctamente!")
+            st.rerun()

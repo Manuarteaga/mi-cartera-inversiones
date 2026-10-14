@@ -307,12 +307,11 @@ else:
         if not df_filtrado.empty:
             vista_grafico = st.selectbox(
                 "Ver distribución por:",
-                ["Nombre del Activo", "Tipo de Activo", "Categoría", "Región / País"],
+                ["Activo", "Categoría", "Región / País"],
                 key="select_distribucion"
             )
             columna_map = {
-                "Nombre del Activo": "Activo",
-                "Tipo de Activo": "Tipo_Activo",
+                "Activo": "Activo",
                 "Categoría": "Categoría",
                 "Región / País": "Región_País",
             }
@@ -326,7 +325,6 @@ else:
                 hole=0.5,
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
-            # Ocultamos el texto exterior para que el donut se vea grande y limpio
             fig_donut.update_traces(
                 textinfo="none",
                 hovertemplate="<b>%{label}</b><br>Inversión: %{value:,.2f} €<br>Porcentaje: %{percent}<extra></extra>"

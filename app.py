@@ -11,7 +11,6 @@ st.set_page_config(
 )
 
 # --- CONFIGURACIÓN DE CONEXIÓN CON GOOGLE SHEETS ---
-# Definimos los permisos necesarios para Google Sheets y Drive
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -19,24 +18,19 @@ SCOPES = [
 
 @st.cache_resource
 def conectar_google_sheets():
-    # Cargamos las credenciales seguras desde los Secrets de Streamlit Cloud
-    # (Las configuraremos en el panel de Streamlit Cloud)
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     client = gspread.authorize(creds)
-    
-    # Nombre de tu hoja de cálculo en Google Drive
     sheet = client.open("MiCarteraInversiones").sheet1
     return sheet
 
-@st.cache_data(ttl=1) # TTL de 1 segundo para refrescar datos rápidamente tras cambios
+@st.cache_data(ttl=1)
 def cargar_datos():
     try:
         sheet = conectar_google_sheets()
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Si la hoja está vacía, devolvemos el DataFrame con las columnas correctas
         if df.empty:
             return pd.DataFrame(
                 columns=[
@@ -62,14 +56,11 @@ def cargar_datos():
 def guardar_dataframe(df):
     try:
         sheet = conectar_google_sheets()
-        sheet.clear() # Limpiamos la hoja
-        # Convertimos las fechas a string para evitar errores de serialización
+        sheet.clear()
         if "Fecha" in df.columns:
             df["Fecha"] = df["Fecha"].astype(str)
-        
-        # Escribimos las cabeceras y los valores
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
-        st.cache_data.clear() # Limpiamos caché para forzar recarga
+        st.cache_data.clear()
     except Exception as e:
         st.error(f"Error al guardar en Google Sheets: {e}")
 
@@ -83,7 +74,7 @@ if not df.empty and "Fecha" in df.columns:
 # --- BARRA LATERAL: FORMULARIO Y FILTROS ---
 st.sidebar.header("➕ Añadir Operación")
 
-with st.sidebar.form("formulario_operacion", clear_on_submit=True):
+with st.sidebar.form("formulario_operacion", clear_on_submit=False):
     fecha = st.date_input("Fecha de operación", value=date.today())
     tipo_movimiento = st.selectbox(
         "Tipo de movimiento", ["Compra", "Venta", "Dividendo"]
@@ -139,31 +130,25 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             "XTB",
             "Otro / Personalizado",
         ],
+        key="select_broker"
     )
 
-    comision_calculada = 0.0
-    importe_base = (
-        importe_manual
-        if tipo_activo in ["Fondos Indexados", "ETFs"]
-        else (participaciones * precio_unitario)
-    )
-
-    if "MyInvestor" in broker or "Indexa Capital" in broker:
-        comision_calculada = 0.0
-    elif "Trade Republic" in broker:
-        comision_calculada = 1.00
-    elif "XTB" in broker:
-        comision_calculada = 0.0
+    # Cálculo automático preliminar de comisión según bróker seleccionado
+    comision_default = 0.0
+    if "Trade Republic" in broker:
+        comision_default = 1.00
     elif "Degiro" in broker:
-        comision_calculada = 2.00
+        comision_default = 2.00
     elif "Interactive Brokers" in broker:
-        comision_calculada = 1.25
+        comision_default = 1.25
+    else:
+        comision_default = 0.00
 
     comision = st.number_input(
-        "Comisión estimada / aplicada (€) [Calculada automáticamente]",
+        "Comisión estimada / aplicada (€)",
         min_value=0.0,
         format="%.2f",
-        value=float(comision_calculada),
+        value=float(comision_default),
     )
 
     categoria = st.selectbox(

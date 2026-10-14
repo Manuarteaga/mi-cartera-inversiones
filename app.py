@@ -307,10 +307,11 @@ else:
         if not df_filtrado.empty:
             vista_grafico = st.selectbox(
                 "Ver distribución por:",
-                ["Tipo de Activo", "Categoría", "Región / País"],
+                ["Nombre del Activo", "Tipo de Activo", "Categoría", "Región / País"],
                 key="select_distribucion"
             )
             columna_map = {
+                "Nombre del Activo": "Activo",
                 "Tipo de Activo": "Tipo_Activo",
                 "Categoría": "Categoría",
                 "Región / País": "Región_País",

@@ -2,41 +2,80 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 
 # Configuración de la página en modo ancho
 st.set_page_config(
     page_title="Mi Cartera de Inversiones", page_icon="📈", layout="wide"
 )
 
-DATA_FILE = "cartera_datos.csv"
+# --- CONFIGURACIÓN DE CONEXIÓN CON GOOGLE SHEETS ---
+# Definimos los permisos necesarios para Google Sheets y Drive
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
+@st.cache_resource
+def conectar_google_sheets():
+    # Cargamos las credenciales seguras desde los Secrets de Streamlit Cloud
+    # (Las configuraremos en el panel de Streamlit Cloud)
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    
+    # Nombre de tu hoja de cálculo en Google Drive
+    sheet = client.open("MiCarteraInversiones").sheet1
+    return sheet
 
-@st.cache_data
+@st.cache_data(ttl=1) # TTL de 1 segundo para refrescar datos rápidamente tras cambios
 def cargar_datos():
     try:
-        return pd.read_csv(DATA_FILE)
-    except FileNotFoundError:
-        return pd.DataFrame(
-            columns=[
-                "Fecha",
-                "Tipo_Movimiento",
-                "Activo",
-                "Tipo_Activo",
-                "Subtipo_Aportacion",
-                "Broker",
-                "Categoría",
-                "Región_País",
-                "Participaciones",
-                "Precio_Unitario",
-                "Importe_Manual",
-                "Comision",
-            ]
-        )
+        sheet = conectar_google_sheets()
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+        
+        # Si la hoja está vacía, devolvemos el DataFrame con las columnas correctas
+        if df.empty:
+            return pd.DataFrame(
+                columns=[
+                    "Fecha",
+                    "Tipo_Movimiento",
+                    "Activo",
+                    "Tipo_Activo",
+                    "Subtipo_Aportacion",
+                    "Broker",
+                    "Categoría",
+                    "Región_País",
+                    "Participaciones",
+                    "Precio_Unitario",
+                    "Importe_Manual",
+                    "Comision",
+                ]
+            )
+        return df
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return pd.DataFrame()
 
+def guardar_dataframe(df):
+    try:
+        sheet = conectar_google_sheets()
+        sheet.clear() # Limpiamos la hoja
+        # Convertimos las fechas a string para evitar errores de serialización
+        if "Fecha" in df.columns:
+            df["Fecha"] = df["Fecha"].astype(str)
+        
+        # Escribimos las cabeceras y los valores
+        sheet.update([df.columns.values.tolist()] + df.values.tolist())
+        st.cache_data.clear() # Limpiamos caché para forzar recarga
+    except Exception as e:
+        st.error(f"Error al guardar en Google Sheets: {e}")
 
 df = cargar_datos()
 
-st.title("📈 Mi Cartera de Inversiones Personal")
+st.title("📈 Mi Cartera de Inversiones Personal (Sincronizada)")
 
 if not df.empty and "Fecha" in df.columns:
     df["Fecha"] = pd.to_datetime(df["Fecha"]).dt.date
@@ -151,7 +190,7 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             nueva_fila = pd.DataFrame(
                 [
                     {
-                        "Fecha": fecha,
+                        "Fecha": str(fecha),
                         "Tipo_Movimiento": tipo_movimiento,
                         "Activo": activo,
                         "Tipo_Activo": tipo_activo,
@@ -166,9 +205,9 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
                     }
                 ]
             )
-            df = pd.concat([df, nueva_fila], ignore_index=True)
-            df.to_csv(DATA_FILE, index=False)
-            st.sidebar.success(f"¡Operación en {activo} guardada!")
+            df_actualizado = pd.concat([df, nueva_fila], ignore_index=True)
+            guardar_dataframe(df_actualizado)
+            st.sidebar.success(f"¡Operación en {activo} guardada en Google Sheets!")
             st.rerun()
 
 # --- FILTROS DE BÚSQUEDA EN BARRA LATERAL ---
@@ -205,9 +244,9 @@ if not df.empty and "Tipo_Activo" in df.columns:
 # --- CÁLCULO DE IMPORTES TOTALES ---
 def calcular_importe(row):
     if row.get("Tipo_Activo") in ["Fondos Indexados", "ETFs"]:
-        return row.get("Importe_Manual", 0.0) + row.get("Comision", 0.0)
+        return float(row.get("Importe_Manual", 0.0)) + float(row.get("Comision", 0.0))
     else:
-        return (row.get("Participaciones", 0.0) * row.get("Precio_Unitario", 0.0)) + row.get("Comision", 0.0)
+        return (float(row.get("Participaciones", 0.0)) * float(row.get("Precio_Unitario", 0.0))) + float(row.get("Comision", 0.0))
 
 
 if not df.empty:
@@ -251,7 +290,7 @@ def calcular_impuestos_tramos(base_imponible):
 # --- PANEL PRINCIPAL ---
 if df.empty:
     st.info(
-        "👋 ¡Bienvenido! Añade tu primera operación desde el menú desplegable de la izquierda para empezar."
+        "👋 ¡Bienvenido! Conecta tu Google Sheet para empezar a registrar operaciones."
     )
 else:
     compras_total = df_filtrado[df_filtrado["Tipo_Movimiento"] == "Compra"]["Importe_Total"].sum()
@@ -259,13 +298,13 @@ else:
     dividendos_total = df_filtrado[df_filtrado["Tipo_Movimiento"].isin(["Dividendo", "Dividendos"])]["Importe_Total"].sum()
     
     total_invertido = compras_total - ventas_total
-    total_comisiones = df_filtrado["Comision"].sum()
+    total_comisiones = df_filtrado["Comision"].astype(float).sum()
 
     impuestos_dividendos = calcular_impuestos_tramos(dividendos_total)
     plusvalia_estimada = max(0.0, total_invertido * 0.12)
     impuestos_retirada = calcular_impuestos_tramos(plusvalia_estimada)
 
-    # --- DISPOSICIÓN SUPERIOR: MÉTRICAS A LA IZQUIERDA, GRÁFICO DONUT A LA DERECHA ---
+    # --- DISPOSICIÓN SUPERIOR: MÉTRICAS Y GRÁFICO DONUT ---
     col_sup_izq, col_sup_der = st.columns([1.1, 0.9])
 
     with col_sup_izq:
@@ -312,7 +351,7 @@ else:
     if df_filtrado.empty:
         st.warning("No hay operaciones que coincidan con los filtros seleccionados.")
     else:
-        # --- SEGUNDA FILA: EVOLUCIÓN TEMPORAL A LA DERECHA, DATOS Y GESTIÓN A LA IZQUIERDA ---
+        # --- SEGUNDA FILA: EVOLUCIÓN TEMPORAL Y DATOS ---
         col_inf_izq, col_inf_der = st.columns([1.1, 0.9])
 
         with col_inf_der:
@@ -445,5 +484,6 @@ else:
                 if st.button("🗑️ Eliminar Operación Seleccionada", type="primary"):
                     idx_a_eliminar = opciones_borrar[operacion_a_borrar]
                     df_nuevo = df.drop(idx_a_eliminar).reset_index(drop=True)
-                    df_nuevo.to_csv(DATA_FILE, index=False)
-                    st.success("¡Operación eliminada correctamente!")
+                    guardar_dataframe(df_nuevo)
+                    st.success("¡Operación eliminada de Google Sheets!")
+                    st.rerun()

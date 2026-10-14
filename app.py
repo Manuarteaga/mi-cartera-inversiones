@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Mi Cartera de Inversiones", page_icon="📈", layout="wide"
 )
 
-# Archivo donde se guardan los datos
+# Archivo local donde se guardan los datos
 DATA_FILE = "cartera_datos.csv"
 
 

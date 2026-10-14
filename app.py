@@ -24,6 +24,7 @@ def cargar_datos():
                 "Activo",
                 "Tipo_Activo",
                 "Subtipo_Aportacion",
+                "Broker",
                 "Categoría",
                 "Región_País",
                 "Participaciones",
@@ -66,7 +67,6 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
     importe_manual = 0.0
 
     if tipo_activo in ["Fondos Indexados", "ETFs"]:
-        # Selector interactivo para Fondos/ETFs
         subtipo_aportacion = st.radio(
             "Modalidad de aportación",
             ["Inversión Inicial", "Aportación Mensual / Periódica"],
@@ -78,7 +78,6 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             value=100.0,
         )
     else:
-        # Para Acciones, Fondos Monetarios u Otros (método tradicional de número de títulos)
         subtipo_aportacion = "Acciones / Unidades"
         participaciones = st.number_input(
             "Número de Participaciones / Acciones",
@@ -93,6 +92,52 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
             value=10.0,
         )
 
+    # 3. SELECCIÓN DE BRÓKER Y CÁLCULO AUTOMÁTICO DE COMISIÓN
+    broker = st.selectbox(
+        "Bróker",
+        [
+            "MyInvestor (0 € - Fondos)",
+            "Indexa Capital (Gestión automatizada)",
+            "Interactive Brokers",
+            "Degiro",
+            "Trade Republic",
+            "XTB",
+            "Otro / Personalizado",
+        ],
+    )
+
+    # Lógica de cálculo automático de comisión orientativa según el bróker
+    # (Calculamos sobre el importe base de la operación)
+    comision_calculada = 0.0
+
+    # Estimamos el importe base para calcular comisiones proporcionales si procede
+    importe_base = (
+        importe_manual
+        if tipo_activo in ["Fondos Indexados", "ETFs"]
+        else (participaciones * precio_unitario)
+    )
+
+    if "MyInvestor" in broker or "Indexa Capital" in broker:
+        comision_calculada = 0.0  # Habitualmente 0€ en compra de fondos indexados propios
+    elif "Trade Republic" in broker:
+        comision_calculada = 1.00  # Tarifa fija típica por orden externa
+    elif "XTB" in broker:
+        comision_calculada = (
+            0.0 if importe_base <= 100000 else 0.2
+        )  > 0  # 0% hasta 100k mes
+    elif "Degiro" in broker:
+        comision_calculada = 2.00  # Comisión fija orientativa por bolsa/operación
+    elif "Interactive Brokers" in broker:
+        comision_calculada = 1.25  # Tarifa fija muy baja orientativa
+
+    # Permitir al usuario ver y ajustar la comisión calculada automáticamente si lo desea
+    comision = st.number_input(
+        "Comisión estimada / aplicada (€) [Calculada automáticamente]",
+        min_value=0.0,
+        format="%.2f",
+        value=float(comision_calculada),
+    )
+
     categoria = st.selectbox(
         "Categoría / Estrategia",
         [
@@ -106,9 +151,6 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
     region = st.selectbox(
         "Región / País principal",
         ["Global / Multirregión", "EE. UU.", "Europa", "Emergentes", "España"],
-    )
-    comision = st.number_input(
-        "Comisiones / Gastos (€)", min_value=0.0, format="%.2f", value=0.0
     )
 
     submitted = st.form_submit_button("Guardar Operación")
@@ -125,6 +167,7 @@ with st.sidebar.form("formulario_operacion", clear_on_submit=True):
                         "Activo": activo,
                         "Tipo_Activo": tipo_activo,
                         "Subtipo_Aportacion": subtipo_aportacion,
+                        "Broker": broker,
                         "Categoría": categoria,
                         "Región_País": region,
                         "Participaciones": participaciones,
@@ -282,7 +325,7 @@ else:
     col_b1, col_b2 = st.columns([2, 1])
     with col_b1:
         opciones_borrar = {
-            f"Fila {idx}: [{row['Fecha']}] {row['Tipo_Movimiento']} de {row['Activo']} ({row['Subtipo_Aportacion']})": idx
+            f"Fila {idx}: [{row['Fecha']}] {row['Tipo_Movimiento']} de {row['Activo']} ({row['Broker']})": idx
             for idx, row in df.iterrows()
         }
 
